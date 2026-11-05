@@ -44,7 +44,9 @@ async function prepareWorker(){
   navigator.serviceWorker.addEventListener('message',event=>{
    if(event.data?.type==='media-context-needed')event.ports[0]?.postMessage(videoSessions.get(event.data.session)||null);
   });
-  await navigator.serviceWorker.register(new URL('./media-worker.js',import.meta.url),{type:'module',scope:new URL('./',import.meta.url).pathname,updateViaCache:'none'});
+  const updated=await navigator.serviceWorker.register(new URL('./media-worker.js',import.meta.url),{type:'module',scope:new URL('./',import.meta.url).pathname,updateViaCache:'none'});
+  const installing=updated.installing||updated.waiting;
+  if(installing&&installing.state!=='activated')await new Promise((resolve,reject)=>{installing.addEventListener('statechange',()=>{if(installing.state==='activated')resolve();else if(installing.state==='redundant')reject(Error('영상 재생 업데이트 실패'))})});
   const registration=await navigator.serviceWorker.ready;
   if(!navigator.serviceWorker.controller)await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{navigator.serviceWorker.removeEventListener('controllerchange',changed);reject(Error('영상 재생 준비 실패'))},5000);function changed(){clearTimeout(timer);resolve()}navigator.serviceWorker.addEventListener('controllerchange',changed,{once:true})});
   return registration;

@@ -18,7 +18,8 @@ const server=http.createServer(async(req,res)=>{try{
   const match=/^bytes=(\d+)-(\d+)$/.exec(req.headers.range||'');
   const lo=match?Number(match[1]):0,hi=match?Number(match[2]):5242879;
   const bytes=video.subarray(part*5242880+lo,part*5242880+hi+1);
-  res.writeHead(match?206:200,{'Content-Type':'application/octet-stream','Content-Length':bytes.length,...(match?{'Content-Range':`bytes ${lo}-${hi}/5242880`}:{})});delivered+=bytes.length;return res.end(bytes);
+  res.writeHead(match?206:200,{'Content-Type':'application/octet-stream','Content-Length':bytes.length,...(match?{'Content-Range':`bytes ${lo}-${hi}/5242880`}:{})});if(part===0&&bytes.length>65536){res.write(bytes.subarray(0,65536));delivered+=65536;await gate;res.end(bytes.subarray(65536));delivered+=bytes.length-65536;return}
+  delivered+=bytes.length;return res.end(bytes);
  }
  const pathname=url.pathname==='/'?'index.html':url.pathname.slice(1);if(!/^[\w.-]+$/.test(pathname)){res.writeHead(404);return res.end()}
  const data=await fs.readFile('public/'+pathname);res.setHeader('Content-Type',pathname.endsWith('.js')?'text/javascript':pathname.endsWith('.css')?'text/css':'text/html');res.end(data);
@@ -26,9 +27,10 @@ const server=http.createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.once('listening',resolve));
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
 try{
- const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));const started=Date.now();await page.goto('http://127.0.0.1:3146/?draft=draft#'+key);
+ const page=await browser.newPage({viewport:{width:1440,height:1100}});const errors=[];page.on('pageerror',e=>errors.push(e.message));const started=Date.now();await page.goto('http://127.0.0.1:3146/?draft=draft#'+key);
+ await page.locator('video').scrollIntoViewIfNeeded();
  await page.waitForFunction(()=>document.querySelector('video')?.currentTime>0,null,{timeout:30000});
- const elapsed=Date.now()-started;assert.ok(delivered<video.length,'Playback must begin before the entire file arrives');
+ const elapsed=Date.now()-started;assert.ok(delivered<5242880,'Playback must begin before even the first 5MiB object has finished downloading');
  assert.ok(await page.locator('video').evaluate(v=>v.currentSrc.includes('/__media/')),'Browser should use byte-range streaming');
  console.log(`PASS: 100MiB playback began after ${delivered} bytes in ${elapsed}ms while later chunks were deliberately blocked.`);
  const virtual=await page.locator('video').evaluate(v=>v.currentSrc);
@@ -37,4 +39,4 @@ try{
  const cdp=await page.context().newCDPSession(page);await cdp.send('ServiceWorker.enable');await cdp.send('ServiceWorker.stopAllWorkers');
  const recovered=await page.evaluate(async url=>{const r=await fetch(url,{headers:{Range:'bytes=0-15'}});return {status:r.status,bytes:[...new Uint8Array(await r.arrayBuffer())]}},virtual);assert.equal(recovered.status,206);assert.deepEqual(recovered.bytes,[...video.slice(0,16)]);
  assert.deepEqual(errors,[]);console.log('PASS: suffix ranges and playback context recovery after worker restart.');
-}finally{release();await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}
+}catch(e){console.error({delivered,requests});throw e;}finally{release();await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}

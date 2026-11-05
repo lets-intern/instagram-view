@@ -25,3 +25,12 @@ test('suffix and HEAD requests do not download unneeded chunks',async()=>{
  let calls=0;const head=rangeResponse(new Request('https://app.test/media',{method:'HEAD'}),media,()=>{calls++;throw Error('must not fetch')});assert.equal(head.status,200);assert.equal(calls,0);
  const suffix=rangeResponse(new Request('https://app.test/media',{headers:{Range:'bytes=-16'}}),media,async(part,lo,hi)=>{assert.equal(part,19);assert.equal(lo,CHUNK_SIZE-16);return new Uint8Array(hi-lo+1).fill(9)});assert.equal((await suffix.arrayBuffer()).byteLength,16);
 });
+test('partial network data is forwarded before the first stored object completes',async()=>{
+ let finish;
+ const gate=new Promise(resolve=>finish=resolve);
+ const r=rangeResponse(new Request('https://app.test/media',{headers:{Range:'bytes=0-15'}}),media,async()=>new ReadableStream({async start(c){c.enqueue(new Uint8Array(4).fill(1));await gate;c.enqueue(new Uint8Array(12).fill(2));c.close()}}));
+ const reader=r.body.getReader();const first=await reader.read();assert.equal(first.value.byteLength,4);finish();const second=await reader.read();assert.equal(second.value.byteLength,12);assert.equal((await reader.read()).done,true);
+});
+test('an incomplete storage response fails instead of silently truncating video',async()=>{
+ const r=rangeResponse(new Request('https://app.test/media',{headers:{Range:'bytes=0-15'}}),media,async()=>new Uint8Array(8));await assert.rejects(()=>r.arrayBuffer(),/크기/);
+});

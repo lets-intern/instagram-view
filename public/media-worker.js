@@ -44,8 +44,17 @@ self.addEventListener('fetch', event => {
         try {
           const r = await fetch(config.supabaseUrl + '/storage/v1/object/authenticated/draftroom-media/' + media.id + '/' + part, {headers, signal, cache: 'no-store'});
           if (!r.ok) throw Error('영상 조각 로딩 실패: ' + r.status);
-          const bytes = new Uint8Array(await r.arrayBuffer());
-          return r.status === 206 ? bytes : bytes.slice(lo, hi + 1);
+          if (r.status === 206) return r.body;
+          // Also handle a storage endpoint that ignores Range, without buffering the whole object.
+          let offset = 0;
+          return r.body.pipeThrough(new TransformStream({
+            transform(bytes, controller) {
+              const start = Math.max(0, lo - offset), end = Math.min(bytes.length, hi + 1 - offset);
+              if (end > start) controller.enqueue(bytes.subarray(start, end));
+              offset += bytes.length;
+              if (offset > hi) controller.terminate();
+            }
+          }));
         } catch (error) {
           if (signal.aborted) throw error;
           failure = error;
