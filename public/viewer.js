@@ -1,4 +1,4 @@
-import {cloud, cloudApi, cloudMedia} from "./cloud.js";
+import {cloud, cloudApi, cloudMedia, cloudVideo} from "./cloud.js";
 const embedded = window.REVIEW_DATA;
 export const offline = !!embedded;
 export const key = location.hash.slice(1);
@@ -147,10 +147,24 @@ export function render(previewOnly = false) {
   bindPreview();
   if (state.editor) window.renderEditor?.();
 }
+const streamingFailed=new Set();
 async function loadCloudMedia(){
+ const d=current();if(!d)return;
  const targets=[...document.querySelectorAll('[data-media-id]')];
- for(const el of targets){const d=current();if(!d)continue;const id=el.dataset.mediaId;const m=[...d.media,d.cover,d.avatar].filter(Boolean).find(m=>m.id===id);if(!m)continue;try{const url=await cloudMedia(key,m);urls.set(m.id,url);if(el.isConnected){el.src=url;if(el.tagName==='VIDEO'){if(d.cover)cloudMedia(key,d.cover).then(poster=>{if(el.isConnected)el.poster=poster}).catch(()=>{});el.play().catch(()=>{})}}}catch(e){if(el.isConnected){const hint=el.parentElement?.querySelector('.loading');if(hint)hint.textContent=e.message;else el.alt='미디어 로딩 실패'}}}
+ await Promise.all(targets.map(async el=>{
+  const m=[...d.media,d.cover,d.avatar].filter(Boolean).find(m=>m.id===el.dataset.mediaId);if(!m)return;
+  try{
+   const url=el.tagName==='VIDEO'&&!streamingFailed.has(m.id)?await cloudVideo(key,m):await cloudMedia(key,m);
+   urls.set(m.id,url);if(!el.isConnected)return;
+   if(el.src!==url)el.src=url;
+   if(el.tagName==='VIDEO'){
+    if(d.cover)cloudMedia(key,d.cover).then(poster=>{if(el.isConnected)el.poster=poster}).catch(()=>{});
+    el.play().catch(()=>{});
+   }
+  }catch(e){if(el.isConnected){const hint=el.parentElement?.querySelector('.loading');if(hint)hint.textContent=e.message;else el.alt='미디어 로딩 실패'}}
+ }));
 }
+
 function bindPreview() {
   const d = current();
   if (!d) return;
@@ -203,7 +217,12 @@ function bindPreview() {
     video.onclick = () => (video.paused ? video.play() : video.pause());
     video.oncanplay = () =>
       video.parentElement?.querySelector(".loading")?.remove();
-    video.onerror = () => {
+    video.onerror = async () => {
+      const m=d.media[Math.min(slide,d.media.length-1)];
+      if(cloud&&!offline&&m&&video.src.includes('/__media/')&&!streamingFailed.has(m.id)){
+        streamingFailed.add(m.id);
+        try{const url=await cloudMedia(key,m);urls.set(m.id,url);if(video.isConnected){video.src=url;video.play().catch(()=>{})}return}catch{}
+      }
       const hint = video.parentElement?.querySelector(".loading");
       if (hint)
         hint.textContent = "브라우저가 이 영상 코덱을 지원하지 않습니다";
@@ -211,7 +230,7 @@ function bindPreview() {
     document.querySelector(".sound").onclick = () => {
       video.muted = !video.muted;
     };
-    video.play().catch(() => {
+    if(video.getAttribute("src"))video.play().catch(() => {
       const hint = video.parentElement?.querySelector(".loading");
       if (hint) hint.textContent = "영상을 눌러 재생하세요";
     });

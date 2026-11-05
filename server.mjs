@@ -380,6 +380,8 @@ const server = http.createServer(async (req, res) => {
       "/viewer.js": "viewer.js",
       "/editor.js": "editor.js",
       "/cloud.js": "cloud.js",
+      "/media-worker.js": "media-worker.js",
+      "/media-range.js": "media-range.js",
       "/config.js": "config.js",
     };
     const file = files[u.pathname];

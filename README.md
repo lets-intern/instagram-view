@@ -101,3 +101,9 @@ python3 scripts/deploy-supabase.py --publish
 `npm test`에는 100MiB 원본을 20개 조각으로 전송·복원해 SHA-256이 같은지 확인하는 어댑터 테스트가 포함됩니다. SQL은 격리된 PostgreSQL에서 `supabase/test.sql`로 권한·계정 분리·미완료 업로드 거부를 검증했습니다. 실제 Supabase 프로젝트에서의 Storage/CORS·브라우저 재생과 GitHub Pages 공개 배포 검증은 관리 권한 연결 후 진행해야 합니다. 아직 공개 배포가 완료된 상태는 아닙니다.
 
 자동 배포의 초기 편집 링크는 저장소에 공개된 RSA 공개키로 암호화해 `supabase/deployment-access.enc`에 기록합니다. 복호화용 개인키는 이 작업 환경의 Git 무시 경로 `data/deploy-private.pem`에만 있으며, 브라우저나 GitHub 저장소에 게시하지 않습니다. 실제 배포 성공 여부는 Actions 실행 및 `deployment-status.json`으로 확인합니다.
+
+### 영상 첫 재생 속도
+
+클라우드 영상은 전체 Blob을 완성할 때까지 기다리지 않고 서비스 워커가 원본의 HTTP Range 요청을 5MiB 저장 객체에 연결합니다. 필요한 구간부터 순서대로 스트리밍하고 최대 3개 조각을 미리 받습니다. 뒤쪽 메타데이터 탐색·재생 중 탐색도 원본 바이트 위치를 유지합니다. 캡션·미리보기 UI는 로딩 중에도 사용할 수 있습니다. 서비스 워커가 지원되지 않거나 실패하면 4개 조각씩 병렬 다운로드하는 Blob 방식으로 복귀합니다. 오프라인 HTML 내보내기는 원본 파일 전체를 포함합니다.
+
+`node scripts/stream-smoke.mjs`는 100MiB 영상의 뒤쪽 조각을 의도적으로 막은 채 첫 프레임이 재생되는지 확인하고, suffix Range와 워커 재시작 복구도 검증합니다. 실제 공개 배포의 첫 프레임 시간·그때까지 받은 바이트는 Actions가 `deployment-status.json`에 기록합니다.

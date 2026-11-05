@@ -25,6 +25,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - name: Check playback before complete download
+        run: node scripts/stream-smoke.mjs
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
       - name: Connect Supabase and test real storage
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -42,6 +46,7 @@ jobs:
         run: node scripts/check-live.mjs "$PAGES_URL"
         env:
           PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+          REVIEW_DRAFT_ID: 0155d68d-ba3f-4868-a123-7478e3d3aa09
       - name: Remove temporary test draft and media
         if: always()
         env:
@@ -60,7 +65,10 @@ jobs:
           python3 - <<'PY'
           import json,os
           from pathlib import Path
-          Path('deployment-status.json').write_text(json.dumps({'status':os.environ['DEPLOY_STATUS'],'run_url':os.environ['RUN_URL'],'url':os.environ.get('PAGES_URL','')}))
+          result={'status':os.environ['DEPLOY_STATUS'],'run_url':os.environ['RUN_URL'],'url':os.environ.get('PAGES_URL','')}
+          metrics=Path('data/playback-performance.json')
+          if metrics.exists(): result['playback']=json.loads(metrics.read_text())
+          Path('deployment-status.json').write_text(json.dumps(result))
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
