@@ -1,0 +1,72 @@
+name: Deploy Draftroom
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Connect Supabase and test real storage
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python3 scripts/deploy-supabase.py --ci
+      - name: Check public deployment configuration
+        run: node scripts/check-pages.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify public site in Chrome
+        run: node scripts/check-live.mjs "$PAGES_URL"
+        env:
+          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+      - name: Remove temporary test draft and media
+        if: always()
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -f data/deployment-test.json ]; then
+            python3 scripts/deploy-supabase.py --cleanup-only
+          fi
+      - name: Save deployment result
+        if: always()
+        env:
+          DEPLOY_STATUS: ${{ job.status }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          Path('deployment-status.json').write_text(json.dumps({'status':os.environ['DEPLOY_STATUS'],'run_url':os.environ['RUN_URL'],'url':os.environ.get('PAGES_URL','')}))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add deployment-status.json public/config.js
+          if [ -f supabase/deployment-access.enc ]; then git add supabase/deployment-access.enc; fi
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: record deployment result'
+            git push origin HEAD:main
+          fi
