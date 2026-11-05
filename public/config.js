@@ -1,3 +1,1 @@
-// Only public Supabase configuration goes here. Deployment replaces this file.
-// Without cloud configuration, the local Node.js backend remains available.
-window.DRAFTROOM_CONFIG = null;
+window.DRAFTROOM_CONFIG = {"supabaseUrl": "https://nfnhapavxiyobacvdrym.supabase.co", "publishableKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5mbmhhcGF2eGl5b2JhY3ZkcnltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5NDA5NDQsImV4cCI6MjA5NzUxNjk0NH0.Zjpm7sOyFGIWpz5ZrY3A1-8HKNa96X_0dEAQYTatIig"};
